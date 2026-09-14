@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>Tiered Memory for Hermes — Nick × Henry</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-2: #161b22;
+    --ink: #f0f6fc;
+    --ink-2: #8b949e;
+    --line: #30363d;
+    --hot: #f78166;
+    --warm: #d2a8ff;
+    --cold: #58a6ff;
+    --accent: #f0b232;
+    --good: #56d364;
+    --bad: #f85149;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif; overflow: hidden; }
+  body { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+  .deck { width: min(100vw, calc(100vh * 16 / 9)); height: min(100vh, calc(100vw * 9 / 16)); position: relative; }
+  .slide {
+    position: absolute; inset: 0;
+    padding: 5% 6% 8%;
+    display: none;
+    flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .slide.active { display: flex; }
+  .slide-num { position: absolute; top: 24px; right: 36px; color: var(--ink-2); font-size: 14px; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
+  .slide-tag { position: absolute; top: 24px; left: 36px; color: var(--accent); font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; }
+
+  h1 { font-size: clamp(40px, 5.5vw, 88px); font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; }
+  h2 { font-size: clamp(32px, 4vw, 64px); font-weight: 700; line-height: 1.1; letter-spacing: -0.015em; }
+  h3 { font-size: clamp(22px, 2.5vw, 36px); font-weight: 600; line-height: 1.2; }
+  p { font-size: clamp(16px, 1.5vw, 22px); line-height: 1.55; color: var(--ink); }
+  .muted { color: var(--ink-2); }
+  .small { font-size: clamp(12px, 1vw, 16px); color: var(--ink-2); }
+  code, .mono { font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace; }
+  .accent { color: var(--accent); }
+  .hot-c { color: var(--hot); }
+  .warm-c { color: var(--warm); }
+  .cold-c { color: var(--cold); }
+
+  /* Title slide */
+  .title-slide { justify-content: center; align-items: flex-start; padding-top: 12%; }
+  .title-slide h1 { max-width: 90%; }
+  .title-slide .sub { color: var(--ink-2); font-size: clamp(18px, 2vw, 28px); margin-top: 28px; max-width: 70%; font-weight: 400; }
+  .title-slide .meta { position: absolute; bottom: 8%; left: 7%; color: var(--ink-2); font-size: 14px; letter-spacing: 0.06em; }
+
+  /* Section header */
+  .section-slide { justify-content: center; align-items: flex-start; }
+  .section-slide .num { font-size: clamp(80px, 10vw, 180px); font-weight: 800; color: var(--line); line-height: 1; letter-spacing: -0.04em; }
+  .section-slide h2 { margin-top: 16px; }
+  .section-slide .what { color: var(--ink-2); margin-top: 32px; max-width: 60%; }
+
+  /* Two-column */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 5%; flex: 1; align-content: center; }
+  .two-col.tight { gap: 3%; }
+  .col h3 { margin-bottom: 18px; }
+  .col p + p, .col p + ul, .col ul + p { margin-top: 14px; }
+  ul { padding-left: 1.2em; }
+  li { font-size: clamp(15px, 1.3vw, 19px); line-height: 1.55; margin-bottom: 8px; color: var(--ink); }
+
+  /* Stat cards */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3%; margin-top: 6%; }
+  .stat { background: var(--bg-2); border: 1px solid var(--line); border-radius: 14px; padding: 4% 5%; }
+  .stat .v { font-size: clamp(36px, 4vw, 60px); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .stat .l { color: var(--ink-2); font-size: 14px; margin-top: 8px; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; }
+  .stat .d { color: var(--ink-2); font-size: 14px; margin-top: 14px; line-height: 1.4; }
+  .stat.hot .v { color: var(--hot); }
+  .stat.warm .v { color: var(--warm); }
+  .stat.cold .v { color: var(--cold); }
+
+  /* Tier diagram */
+  .tiers { display: flex; flex-direction: column; gap: 1.4%; margin-top: 2.5%; flex: 1; }
+  .tier { border: 1px solid var(--line); border-radius: 12px; padding: 2% 3%; display: grid; grid-template-columns: 180px 1fr auto; align-items: center; gap: 3%; background: var(--bg-2); }
+  .tier .badge { font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-size: 12px; }
+  .tier .name { font-size: clamp(18px, 1.9vw, 28px); font-weight: 700; margin-top: 4px; line-height: 1.1; }
+  .tier .meta { font-size: 12px; color: var(--ink-2); margin-top: 4px; line-height: 1.3; }
+  .tier.hot { border-left: 5px solid var(--hot); }
+  .tier.warm { border-left: 5px solid var(--warm); }
+  .tier.cold { border-left: 5px solid var(--cold); }
+  .tier .num { font-size: clamp(24px, 2.6vw, 38px); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin-top: 3%; font-size: clamp(14px, 1.2vw, 18px); }
+  th, td { text-align: left; padding: 14px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--ink-2); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+  td.num { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+
+  /* Bullet list big */
+  .checklist { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 4%; margin-top: 4%; }
+  .checklist li { list-style: none; padding-left: 28px; position: relative; }
+  .checklist li::before { content: ""; position: absolute; left: 0; top: 6px; width: 14px; height: 14px; border: 2px solid var(--accent); border-radius: 3px; }
+
+  /* Code block */
+  pre { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 3% 4%; font-size: clamp(13px, 1.1vw, 16px); overflow: auto; margin-top: 4%; line-height: 1.6; }
+  pre .c { color: var(--ink-2); }
+  pre .k { color: var(--hot); }
+  pre .s { color: var(--good); }
+
+  /* Quote */
+  .quote { font-size: clamp(22px, 2.4vw, 38px); line-height: 1.3; font-weight: 500; max-width: 90%; }
+  .quote::before { content: "\201C"; color: var(--accent); font-size: 1.5em; line-height: 0; vertical-align: -0.2em; margin-right: 8px; }
+  .attr { color: var(--ink-2); font-size: 16px; margin-top: 24px; font-style: italic; }
+
+  /* Roadmap */
+  .roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2%; margin-top: 5%; flex: 1; }
+  .rm-card { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 4%; display: flex; flex-direction: column; }
+  .rm-card .week { color: var(--accent); font-weight: 700; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .rm-card .what { font-size: 18px; font-weight: 600; margin-top: 14px; line-height: 1.3; }
+  .rm-card ul { list-style: none; padding: 0; margin-top: 16px; flex: 1; }
+  .rm-card ul li { font-size: 13px; color: var(--ink-2); padding-left: 16px; position: relative; margin-bottom: 6px; line-height: 1.4; }
+  .rm-card ul li::before { content: "—"; position: absolute; left: 0; color: var(--accent); }
+
+  /* Verdict slide */
+  .verdict { display: grid; grid-template-columns: 1fr 1fr; gap: 4%; flex: 1; align-content: center; }
+  .vcard { background: var(--bg-2); border: 1px solid var(--line); border-radius: 16px; padding: 5%; }
+  .vcard h3 { margin-bottom: 18px; }
+  .vcard.pro h3 { color: var(--good); }
+  .vcard.con h3 { color: var(--bad); }
+  .vcard p { font-size: clamp(15px, 1.3vw, 19px); margin-bottom: 12px; }
+
+  /* Nav */
+  .nav { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; background: var(--bg-2); border: 1px solid var(--line); padding: 8px 14px; border-radius: 100px; font-size: 13px; z-index: 100; }
+  .nav button { background: none; border: 1px solid var(--line); color: var(--ink); width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 14px; }
+  .nav button:hover { border-color: var(--accent); color: var(--accent); }
+  .nav .counter { color: var(--ink-2); font-variant-numeric: tabular-nums; padding: 0 8px; }
+  .progress { position: fixed; top: 0; left: 0; height: 2px; background: var(--accent); transition: width 0.3s ease; z-index: 100; }
+
+  /* TOC */
+  .toc { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 5%; margin-top: 6%; }
+  .toc a { color: var(--ink); text-decoration: none; padding: 18px 24px; border: 1px solid var(--line); border-radius: 10px; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s; }
+  .toc a:hover { border-color: var(--accent); background: var(--bg-2); }
+  .toc .num { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* Comparison */
+  .compare-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 2%; margin-top: 3%; padding: 18px 0; border-top: 1px solid var(--line); align-items: center; }
+  .compare-row.head { border-top: none; padding-bottom: 8px; }
+  .compare-row .v { color: var(--accent); font-weight: 600; }
+  .compare-row .lbl { color: var(--ink-2); font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .compare-row div { font-size: clamp(14px, 1.2vw, 17px); }
+
+  @media (max-aspect-ratio: 16/9) {
+    .deck { width: 100vw; height: calc(100vw * 9 / 16); }
+  }
+  @media (min-aspect-ratio: 16/9) {
+    .deck { width: calc(100vh * 16 / 9); height: 100vh; }
+  }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+<!-- 1. TITLE -->
+<section class="slide title-slide active">
+  <span class="slide-tag">Nick × Henry — 14 Sep 2026</span>
+  <h1>Tiered memory<br>for <span class="accent">Hermes</span>.</h1>
+  <p class="sub">Stop compressing what shouldn't be compressed. Stop injecting what shouldn't be loaded. Make memory scale with the user, not the budget.</p>
+  <span class="meta">14 slides · ~8 min read</span>
+</section>
+
+<!-- 2. THE WALL -->
+<section class="slide">
+  <span class="slide-num">02</span>
+  <span class="slide-tag">Problem</span>
+  <h2 style="margin-top:8%">Every Hermes user hits the same wall.</h2>
+  <p class="muted" style="margin-top:2%; max-width:75%">MEMORY.md is one flat file. It grows linearly with every fact. The budget is fixed. When it fills, Hermes auto-compresses — and the oldest preferences vanish first.</p>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="v">50,000</div>
+      <div class="l">Char budget</div>
+      <div class="d">Static ceiling on MEMORY.md. Same for every user.</div>
+    </div>
+    <div class="stat">
+      <div class="v">49,507</div>
+      <div class="l">Your usage today</div>
+      <div class="d">99% full. 493 chars from auto-compression.</div>
+    </div>
+    <div class="stat">
+      <div class="v">~3 yrs</div>
+      <div class="l">Of accumulated context</div>
+      <div class="d">Two parallel files (MEMORY + USER). Both at capacity.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. WHAT BREAKS -->
+<section class="slide">
+  <span class="slide-num">03</span>
+  <span class="slide-tag">Problem</span>
+  <h2>When it compresses, the wrong things disappear.</h2>
+
+  <div class="two-col" style="margin-top:6%">
+    <div class="col">
+      <h3 class="bad" style="color:var(--bad)">What gets lost first</h3>
+      <ul style="margin-top:18px">
+        <li>Hard rules ("never leak model names to users")</li>
+        <li>Cross-session projects ("TRCE funnel state")</li>
+        <li>Communication style ("terse, British slang, options-then-pick")</li>
+        <li>Stable personal facts ("works nights, sleeps 1:30pm")</li>
+        <li>Tool quirks learned the hard way ("beepbo auth.py line numbers")</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3 style="color:var(--good)">What survives</h3>
+      <ul style="margin-top:18px">
+        <li>Recent one-off tasks</li>
+        <li>Transient build details</li>
+        <li>Session-specific debugging</li>
+        <li>The very thing you needed to preserve gets compressed away</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 4. WHY MEMORY.MD FAILS -->
+<section class="slide">
+  <span class="slide-num">04</span>
+  <span class="slide-tag">Diagnosis</span>
+  <h2>One file is doing two jobs.</h2>
+
+  <div class="two-col" style="margin-top:6%">
+    <div class="col">
+      <h3 class="hot-c">High-signal</h3>
+      <p style="margin-top:14px">Hard preferences, communication rules, project structure, tool quirks. Changes rarely. Must never lose.</p>
+      <p class="muted small" style="margin-top:18px">Estimated size: ~2,000 chars</p>
+      <p class="muted small">Update cadence: manual, after proven</p>
+    </div>
+    <div class="col">
+      <h3 class="cold-c">Session-derived</h3>
+      <p style="margin-top:14px">One-off facts, build state, "remember when I asked X", debugging breadcrumbs. High churn, low urgency.</p>
+      <p class="muted small" style="margin-top:18px">Estimated size: unbounded</p>
+      <p class="muted small">Update cadence: every turn</p>
+    </div>
+  </div>
+
+  <div style="margin-top:6%; padding:4% 5%; background:var(--bg-2); border:1px solid var(--line); border-radius:14px; border-left:6px solid var(--accent)">
+    <p>The 50K budget can't tell the two apart. Compression treats them identically.</p>
+  </div>
+</section>
+
+<!-- 5. SECTION DIVIDER - THE PROPOSAL -->
+<section class="slide section-slide">
+  <span class="slide-tag">Proposal</span>
+  <div class="num">02</div>
+  <h2>Three tiers.<br>One CLI.<br>Zero third parties.</h2>
+  <p class="what">A memory harness that scales with the user instead of against them. Local-first. Open. Drops into any Hermes install.</p>
+</section>
+
+<!-- 6. THE ARCHITECTURE -->
+<section class="slide">
+  <span class="slide-num">06</span>
+  <span class="slide-tag">Architecture</span>
+  <h2>The tiered memory model.</h2>
+
+  <div class="tiers">
+    <div class="tier hot">
+      <div>
+        <div class="badge hot-c">Tier 1 · Hot</div>
+        <div class="name" style="margin-top:8px">Always-on rules</div>
+        <div class="meta">Hand-curated, ~2,000 chars, injected every turn</div>
+      </div>
+      <div class="muted">Communication style · Hard NOs · Identity · Funding lens</div>
+      <div class="num hot-c">~2K</div>
+    </div>
+
+    <div class="tier warm">
+      <div>
+        <div class="badge warm-c">Tier 2 · Warm</div>
+        <div class="name" style="margin-top:8px">Topic-tagged facts</div>
+        <div class="meta">Retrieved on relevance, ~8,000 chars, scored per query</div>
+      </div>
+      <div class="muted">TRCE · RezMyCV · Trading bot · Family schedule · MemPalace</div>
+      <div class="num warm-c">~8K</div>
+    </div>
+
+    <div class="tier cold">
+      <div>
+        <div class="badge cold-c">Tier 3 · Cold</div>
+        <div class="name" style="margin-top:8px">Searchable archive</div>
+        <div class="meta">Vector store, unlimited, only fetched on explicit ask</div>
+      </div>
+      <div class="muted">One-off debugging · Build state · Historical facts</div>
+      <div class="num cold-c">∞</div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. WHAT GETS INJECTED -->
+<section class="slide">
+  <span class="slide-num">07</span>
+  <span class="slide-tag">Architecture</span>
+  <h2>Per-turn injection, scoped to the query.</h2>
+
+  <div class="compare-row head">
+    <div></div>
+    <div class="lbl">Today</div>
+    <div class="lbl">Tiered</div>
+    <div class="lbl">Saving</div>
+  </div>
+  <div class="compare-row">
+    <div class="lbl">Always-injected</div>
+    <div>49,507</div>
+    <div class="v">~2,000</div>
+    <div>96% less</div>
+  </div>
+  <div class="compare-row">
+    <div class="lbl">Per-query retrieval</div>
+    <div>n/a</div>
+    <div class="v">~1,500</div>
+    <div>Just-in-time</div>
+  </div>
+  <div class="compare-row">
+    <div class="lbl">Cold lookup (rare)</div>
+    <div>n/a</div>
+    <div>~500</div>
+    <div>On demand</div>
+  </div>
+  <div class="compare-row">
+    <div class="lbl">Total per turn</div>
+    <div>49,507</div>
+    <div class="v">~2,000–4,000</div>
+    <div>~90% lower</div>
+  </div>
+
+  <p class="muted small" style="margin-top:6%">Token cost per conversation drops dramatically. More headroom for actual context. And the high-signal rules are <em>guaranteed</em> to never get compressed away.</p>
+</section>
+
+<!-- 8. HOW RETRIEVAL WORKS -->
+<section class="slide">
+  <span class="slide-num">08</span>
+  <span class="slide-tag">Mechanism</span>
+  <h2>How a fact flows through the tiers.</h2>
+
+  <pre><span class="c"># 1. Conversation turn ends</span>
+Henry saves: <span class="s">"TRCE funnel: view_landing → view_signup → ... → click_upgrade"</span>
+↓
+<span class="c"># 2. Tierer classifies (rule-based, not LLM)</span>
+keyword match: <span class="s">"funnel"</span>, <span class="s">"TRCE"</span> → <span class="k">warm</span>
+new fact count: 1 → <span class="k">do not auto-promote</span>
+↓
+<span class="c"># 3. Stored in warm tier with tags</span>
+{ tier: warm, tags: [trce, analytics], chars: 287 }
+↓
+<span class="c"># 4. Future query: "what's TRCE's funnel state?"</span>
+tag match: <span class="s">["trce", "funnel"]</span> → inject this entry
+↓
+<span class="c"># 5. Nightly consolidator (optional)</span>
+if mentions ≥ 10 in 30 days → suggest promotion to hot</pre>
+</section>
+
+<!-- 9. THE CONSOLIDATOR -->
+<section class="slide">
+  <span class="slide-num">09</span>
+  <span class="slide-tag">Component</span>
+  <h2>The nightly consolidator.</h2>
+  <p class="muted" style="margin-top:2%">Runs once a day. Reads everything. Suggests changes. Never auto-deletes.</p>
+
+  <ul class="checklist">
+    <li>Merges duplicate facts ("Nick works nights" + "Nick is nocturnal" → 1 entry)</li>
+    <li>Promotes warm → hot when a fact appears in 10+ conversations</li>
+    <li>Demotes hot → warm when unused for 90 days OR contradicted</li>
+    <li>Flags unused tier-1 rules to the user: "still true?"</li>
+    <li>Detects contradiction: "you said X on Sep 1, X̄ on Sep 8"</li>
+    <li>Reports size impact: "saved 4,200 chars this run"</li>
+    <li>Backs up pre-consolidation MEMORY.md → <span class="mono">~/.hermes/memory-backups/</span></li>
+    <li>Hooks into existing MemPalace dailysync — no new cron needed</li>
+  </ul>
+</section>
+
+<!-- 10. CLI SURFACE -->
+<section class="slide">
+  <span class="slide-num">10</span>
+  <span class="slide-tag">Interface</span>
+  <h2>One CLI. Zero magic.</h2>
+
+<pre><span class="c"># Inspect what's loaded right now</span>
+hermes memory status
+  hot: 1,847 chars · 14 rules
+  warm: 7,403 chars · 38 facts
+  cold: 12,944 vectors · 6,402 entries
+  next consolidator run: 14h 22m
+
+<span class="c"># Search across all tiers</span>
+hermes memory search <span class="s">"TRCE funnel"</span>
+  <span class="k">warm</span> · 287 chars · "TRCE funnel: view_landing → view_signup → ... → click_upgrade"
+
+<span class="c"># Promote a fact (warm → hot, requires user confirmation)</span>
+hermes memory promote <span class="s">"always use British slang in intro copy"</span>
+  → promoted to hot, 142 chars added
+
+<span class="c"># Run consolidator manually</span>
+hermes memory consolidate --dry-run
+  would merge 7 duplicate pairs (1,240 chars)
+  would suggest 2 promotions to hot
+  would flag 1 contradiction (your review required)</pre>
+</section>
+
+<!-- 11. COMPETITIVE LANDSCAPE -->
+<section class="slide">
+  <span class="slide-num">11</span>
+  <span class="slide-tag">Landscape</span>
+  <h2>What's already out there. What isn't.</h2>
+
+  <table>
+    <tr>
+      <th>Tool</th>
+      <th>Tiering</th>
+      <th>Local</th>
+      <th>Free</th>
+      <th>Open</th>
+      <th>Hermes-ready</th>
+    </tr>
+    <tr>
+      <td>Honcho</td>
+      <td class="num">✓</td>
+      <td class="num">—</td>
+      <td>—</td>
+      <td>—</td>
+      <td class="num">✓</td>
+    </tr>
+    <tr>
+      <td>LangChain Memory</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td>MemGPT / Letta</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td>ChromaDB / vector stores</td>
+      <td>partial</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td>DIY</td>
+    </tr>
+    <tr>
+      <td>Built-in MEMORY.md</td>
+      <td>—</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+    </tr>
+    <tr style="background:var(--bg-2)">
+      <td><strong>Tiered Memory Harness</strong></td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+      <td class="num">✓</td>
+    </tr>
+  </table>
+  <p class="muted small" style="margin-top:5%">The gap: every existing tool forces a trade-off. We don't.</p>
+</section>
+
+<!-- 12. BUILD ROADMAP -->
+<section class="slide">
+  <span class="slide-num">12</span>
+  <span class="slide-tag">Plan</span>
+  <h2>Four weekends to ship.</h2>
+
+  <div class="roadmap">
+    <div class="rm-card">
+      <div class="week">Week 1</div>
+      <div class="what">Consolidator</div>
+      <ul>
+        <li>Read MEMORY.md + USER.md</li>
+        <li>Fuzzy-merge duplicates</li>
+        <li>Report size savings</li>
+        <li>No auto-rewrites yet</li>
+      </ul>
+    </div>
+    <div class="rm-card">
+      <div class="week">Week 2</div>
+      <div class="what">Vector retrieval</div>
+      <ul>
+        <li>SQLite FTS5 (not Chroma)</li>
+        <li>Tag-based warm lookup</li>
+        <li>Inject hook for context assembly</li>
+        <li>CLI: <span class="mono">memory search</span></li>
+      </ul>
+    </div>
+    <div class="rm-card">
+      <div class="week">Week 3</div>
+      <div class="what">Tier movement</div>
+      <ul>
+        <li>Promotion logic (warm → hot)</li>
+        <li>Demotion on contradiction</li>
+        <li>User confirmation prompts</li>
+        <li>Pre/post-save backups</li>
+      </ul>
+    </div>
+    <div class="rm-card">
+      <div class="week">Week 4</div>
+      <div class="what">Ship &amp; document</div>
+      <ul>
+        <li>Packaging as Hermes skill</li>
+        <li>Migration script for old MEMORY.md</li>
+        <li>README + setup guide</li>
+        <li>Post to Hermes community</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 13. HONEST VERDICT -->
+<section class="slide">
+  <span class="slide-num">13</span>
+  <span class="slide-tag">Verdict</span>
+  <h2>Honest assessment.</h2>
+
+  <div class="verdict">
+    <div class="vcard pro">
+      <h3>Worth building</h3>
+      <p><strong>For the Hermes community:</strong> massive. Every user hits the 50K wall. A drop-in solution is a genuine product unlock.</p>
+      <p><strong>For your positioning:</strong> if Hermes is ever more than a personal tool, memory infrastructure is real differentiation. Most agent frameworks treat memory as "stick it in JSON and pray."</p>
+      <p><strong>For you personally:</strong> smaller but real. Stops the compression cliff. Lower per-turn token cost.</p>
+    </div>
+    <div class="vcard con">
+      <h3>Worth knowing</h3>
+      <p><strong>Your current memory is already excellent.</strong> Months of careful curation. The harness would validate and extend it, not replace it.</p>
+      <p><strong>Retrieval adds latency.</strong> Embedding lookups are fast (~5-20ms) but non-zero. Worth it for the cost savings.</p>
+      <p><strong>Risk:</strong> a buggy consolidator that mis-merges facts is worse than the compression wall. Needs careful rollback design.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 14. CTA -->
+<section class="slide">
+  <span class="slide-num">14</span>
+  <span class="slide-tag">Next step</span>
+  <div style="display:flex; flex-direction:column; justify-content:center; flex:1; max-width:80%">
+    <h2>Pick one.</h2>
+
+    <div style="margin-top:6%; display:flex; flex-direction:column; gap:18px">
+      <div style="padding:4% 5%; background:var(--bg-2); border:1px solid var(--line); border-radius:12px; border-left:6px solid var(--hot)">
+        <h3 class="hot-c" style="font-size:22px">A · Start the consolidator tonight</h3>
+        <p class="muted" style="margin-top:10px; font-size:17px">I write the script. You run it on your real MEMORY.md. We see what merges. Zero risk.</p>
+      </div>
+
+      <div style="padding:4% 5%; background:var(--bg-2); border:1px solid var(--line); border-radius:12px; border-left:6px solid var(--warm)">
+        <h3 class="warm-c" style="font-size:22px">B · Full spec, build later</h3>
+        <p class="muted" style="margin-top:10px; font-size:17px">I draft the architecture doc + module skeleton. You come back to it when ready.</p>
+      </div>
+
+      <div style="padding:4% 5%; background:var(--bg-2); border:1px solid var(--line); border-radius:12px; border-left:6px solid var(--cold)">
+        <h3 class="cold-c" style="font-size:22px">C · Park it</h3>
+        <p class="muted" style="margin-top:10px; font-size:17px">Just brainstorming. The deck exists if you want to share the idea.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<div class="progress" id="progress" style="width:7%"></div>
+<nav class="nav">
+  <button onclick="prev()" aria-label="Previous slide">←</button>
+  <span class="counter"><span id="cur">1</span> / <span id="total">14</span></span>
+  <button onclick="next()" aria-label="Next slide">→</button>
+</nav>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  document.getElementById('total').textContent = total;
+  let current = 1;
+
+  function show(n) {
+    if (n < 1) n = 1;
+    if (n > total) n = total;
+    current = n;
+    slides.forEach((s, i) => s.classList.toggle('active', i === n - 1));
+    document.getElementById('cur').textContent = n;
+    document.getElementById('progress').style.width = (n / total * 100) + '%';
+    try { localStorage.setItem('memory-deck-slide', n); } catch (_) {}
+  }
+
+  function next() { show(current + 1); }
+  function prev() { show(current - 1); }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); prev(); }
+    if (e.key === 'Home')       { e.preventDefault(); show(1); }
+    if (e.key === 'End')        { e.preventDefault(); show(total); }
+  });
+
+  document.getElementById('deck').addEventListener('click', e => {
+    if (e.target.closest('.nav')) return;
+    next();
+  });
+
+  try {
+    const saved = parseInt(localStorage.getItem('memory-deck-slide') || '1');
+    if (saved >= 1 && saved <= total) show(saved);
+  } catch (_) {}
+</script>
+
+</body>
+</html>
